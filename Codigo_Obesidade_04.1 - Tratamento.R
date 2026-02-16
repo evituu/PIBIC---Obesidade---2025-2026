@@ -1,11 +1,11 @@
 #------------------------------------------------------------------------------#
-###                  CÃ“DIGO OBESIDADE INTERGERACIONAL                        ###
+###                  CÓDIGO OBESIDADE INTERGERACIONAL                        ###
 #------------------------------------------------------------------------------#
 # Aluno: Victor Eduardo
 # Doscente: Adriano Firmino V. Araaújo
-
+##
 # ---------------------------------------------------------------------------
-# EXTRAÃ‡ÃƒO POR readr::read_fwf + fwf_cols (POF 2017-2018 | MORADOR.txt)
+# EXTRAÇÃO POR readr::read_fwf + fwf_cols (POF 2017-2018 | MORADOR.txt)
 # ---------------------------------------------------------------------------
 
 getwd()
@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
   library(anthro)
   library(childsds)
   library(survey)
+  library(scales)
 })
 
 morador <- "T_MORADOR_S.txt"
@@ -36,32 +37,32 @@ dados_obesidade <- read_fwf(
   file = morador,
   col_positions = fwf_cols(
     UF                = c(3, 4),
-    ESTRATO_POF       = c(14, 15),       # 3-4 
+    ESTRATO_POF       = c(14, 15),       #
     TIPO_SITUACAO_REG = 253,             # largura 1
-    COD_UPA           = c(247, 252),      # 9 posiÃ§Ãµes (8..16)
-    NUM_DOM           = c(9, 10),
-    NUM_UC            = 11,            # largura 17
-    NUM_FAMILIA       = c(46, 47),
-    COD_INFORMANTE    = c(12, 13),     # CÃ³digo do informante
-    V0306             = c(44, 45),     # condiÃ§Ã£o na UC (grau de parentesco)
+    COD_UPA           = c(247, 252),     #
+    NUM_DOM           = c(9, 10),        #
+    NUM_UC            = 11,              #
+    NUM_FAMILIA       = c(46, 47),       #
+    COD_INFORMANTE    = c(12, 13),     # Código do informante
+    V0306             = c(44, 45),     # condição na UC (grau de parentesco)
     V0403             = c(60, 62),     # idade
     V0404             = c(76, 77),     # sexo
-    V0405             = c(98, 99),     # cor/raÃ§a
+    V0405             = c(98, 99),     # cor/raça
     V0414             = c(78, 79),     # sabe ler e escrever
     V0415             = c(80, 81),     # frequenta escola
-    ANOS_ESTUDO       = c(96, 97), 
-    NIVEL_INSTRUCAO   = 254,
-    RENDA_TOTAL       = c(144, 159),
-    RENDA_MONET_PC    = c(112, 127),
-    RENDA_NAO_MONET_PC = c(128, 143),
-    PESO              = c(16, 29),
-    PESO_FINAL        = c(30, 43),
-    DEDUCAO_PC         = c(177, 196),
-    ALTURA_REFERIDA   = c(256, 258),
-    idade_meses       = c(63, 68),
-    PESO_REFERIDO     = c(259, 261)
+    ANOS_ESTUDO       = c(96, 97),     # Anos de estudo
+    NIVEL_INSTRUCAO   = 254,           # Nível de instrução
+    RENDA_TOTAL       = c(144, 159),   # Renda Total
+    RENDA_MONET_PC    = c(112, 127),   # Renda monetária per capita
+    RENDA_NAO_MONET_PC = c(128, 143),  # Renda não monetária per capita
+    PESO              = c(16, 29),     # Peso
+    PESO_FINAL        = c(30, 43),     # Peso final
+    DEDUCAO_PC         = c(177, 196), 
+    ALTURA_REFERIDA   = c(256, 258),   # altura da pessoa
+    idade_meses       = c(63, 68),     # idade em meses
+    PESO_REFERIDO     = c(259, 261)    # peso da pessoa
   ),
-  # Tipagem explÃ­cita (ajuste se necessÃ¡rio)
+  # Tipagem explícia, caso seja necessário
   col_types = cols(
     UF                = col_character(),
     ESTRATO_POF       = col_character(),
@@ -92,6 +93,13 @@ dados_obesidade <- read_fwf(
   na = c("", " ", "NA"),
   show_col_types = FALSE
 )
+
+# col_logical - variáveis binárias
+# col_integer - código categóricos
+# col_double - valores contínuos
+# col_character - string
+# col_factor - fator
+# col_guess - o readr infere o tipo
 
 ###
 ### ------------------------ ESCALA (decimais implícitos) ----------------------
@@ -129,7 +137,7 @@ dados_obesidade |>
     min_renda = min(RENDA_TOTAL, na.rm = TRUE)
   )
 
-# Tamanho do banco e verificaÃ§Ã£o de NAs
+# Tamanho do banco e verificação de NAs
 dim(dados_obesidade)
 colSums(is.na(dados_obesidade))
 
@@ -162,7 +170,7 @@ dados_obesidade <- dados_obesidade |>
   )
 
 # quantidade de moradores
-# Dummies de regiÃ£o
+# Dummies de região
 # biparental, mono H, mono M
 # Pesos
 
@@ -209,26 +217,20 @@ sum(duplicated(dados_obesidade$chave_uc))
 # chave_pessoa: deve ser única por morador
 dados_obesidade |> count(chave_pessoa) |> filter(n > 1)  # idealmente, 0 linhas
 sum(duplicated(dados_obesidade$chave_pessoa))
-
-# Nenhuma chave estÃ¡ repetida ou duplicada
+  # Nenhuma chave está repetida ou duplicada
 
 # Nenhum NA em chaves
 colSums(is.na(dados_obesidade[, c("chave_uc", "chave_pessoa")]))
-
-# col_logical - variáveis binárias
-# col_integer - código categóricos
-# col_double - valores contínuos
-# col_character - string
-# col_factor - fator
-# col_guess - o readr infere o tipo
 
 # Verificar a quantidade de crianças na base (48.028 obs)
 # Idade de 2 - 19
 quant_crianca1 <- dados_obesidade |>
   filter(num_familia == 1) |>
   filter(grau_parentesco == 3) |>
-  filter(idade < 20 & idade > 2) |>
-  filter(idade_meses <= 240 & idade_meses >= 36)
+  filter(idade > 2 & idade < 20) |>
+  filter(idade_meses >= 36 & idade_meses < 240)
+
+table(quant_crianca1$idade_meses)
 
 count(quant_crianca1)
 table(quant_crianca1$idade)
@@ -269,7 +271,7 @@ head(dados_obesidade)
 
 ### ------------------------ OVERVIEW E ANÁLISE ---------------------------- ###
 
-# VerificaÃ§Ã£o dos dados da base
+# Verificação dos dados da base
 str(dados_obesidade)
 unique(dados_obesidade$uf)
 unique(dados_obesidade$zona)
@@ -352,19 +354,17 @@ dados_obesidade_trat <- dados_obesidade_tratada |>
 sort(unique(dados_obesidade_trat$grau_parentesco)) # Verificar
 table(dados_obesidade_trat$grau_parentesco)        # Verificar
 
-# Criar variável de branco e nÃ£o branco
+# Criar variável de branco e não branco
 ## Examinar situação:
 sort(unique(dados_obesidade_trat$cor))
 table(dados_obesidade_trat$cor)
 
 dados_obesidade_trat <- dados_obesidade_trat |>
-  filter(cor != 9)
-
-dados_obesidade_trat <- dados_obesidade_trat |>
-  mutate(
-    cor = case_when(
+  dplyr::filter(cor != 9) |>
+  dplyr::mutate(
+    branco = dplyr::case_when(
       cor == 1 ~ 1L,
-      cor %in% c(2, 3, 4, 5) ~ 0L,
+      cor %in% c(2,3,4,5) ~ 0L,
       TRUE ~ NA_integer_
     )
   )
@@ -372,11 +372,20 @@ dados_obesidade_trat <- dados_obesidade_trat |>
 sort(unique(dados_obesidade_trat$cor))
 table(dados_obesidade_trat$cor)
 
-# Contar quantos responsáveis (grau_parentesco == 1) hÃ¡ em cada UC
+# Remover renda igual a zero
+dados_obesidade_trat |>
+  filter(
+    renda_total == 0
+  )
+
+dados_obesidade_trat <- dados_obesidade_trat |>
+  filter(renda_total > 0)
+
+# Contar quantos responsáveis (grau_parentesco == 1) há em cada UC
 domicilios_mult_resp <- dados_obesidade_trat |>
   filter(grau_parentesco == 1) |>         
   count(chave_uc, name = "n_responsaveis") |>   # contar por família
-  filter(n_responsaveis > 1)                    # mantêm famílias com > 1 responsÃ¡vel
+  filter(n_responsaveis > 1)                    # mantêm famílias com > 1 responsável
 
 # Ver quantas famílias estão nessa situação
 nrow(domicilios_mult_resp)
@@ -384,17 +393,33 @@ head(domicilios_mult_resp, 10)
   # Os resultados apontam que existe apenas um responsável por UC
 
 # Construir a estrutura familiar biparental e monoparental
+#fam_flags <- dados_obesidade_trat |>
+#  summarise(
+#    n_pais = sum(sexo == 1 & grau_parentesco %in% c(1,2)),
+#    n_maes = sum(sexo == 2 & grau_parentesco %in% c(1,2)),
+#    .by = chave_uc
+#  ) |>
+#  mutate(
+#    estrutura_fam = case_when(
+#      (n_pais + n_maes) >= 2 ~ "biparental",
+#      n_maes == 1 & n_pais == 0 ~ "mono_mulher",
+#      n_pais == 1 & n_maes == 0 ~ "mono_homem",
+#      TRUE ~ NA_character_
+#    )
+#  )
+
 fam_flags <- dados_obesidade_trat |>
+  filter(grau_parentesco %in% c(1,2), idade >= 18, sexo %in% c(1,2)) |>
   summarise(
-    n_pais = sum(sexo == 1 & grau_parentesco %in% c(1,2)),
-    n_maes = sum(sexo == 2 & grau_parentesco %in% c(1,2)),
+    n_pais = sum(sexo == 1),
+    n_maes = sum(sexo == 2),
     .by = chave_uc
   ) |>
   mutate(
     estrutura_fam = case_when(
-      (n_pais + n_maes) >= 2 ~ "biparental",
-      n_maes == 1 & n_pais == 0 ~ "mono_mulher",
+      n_pais == 1 & n_maes == 1 ~ "biparental",
       n_pais == 1 & n_maes == 0 ~ "mono_homem",
+      n_pais == 0 & n_maes == 1 ~ "mono_mulher",
       TRUE ~ NA_character_
     )
   )
@@ -405,9 +430,18 @@ table(fam_flags$estrutura_fam)
 table(fam_flags$n_pais)
 table(fam_flags$n_maes)
 
+# Lares homoafetivos
+ucs_homo <- fam_flags |> 
+  filter(n_pais >= 2 & n_maes == 0 | 
+           n_maes >= 2 & n_pais == 0) |> 
+  pull(chave_uc)
+
+dados_obesidade_trat <- dados_obesidade_trat |>
+  filter(!chave_uc %in% ucs_homo)
+
 # Criar variável de região e criação da dummy regional
 dados_obesidade_trat <- dados_obesidade_trat |>
-  dplyr::mutate(
+  mutate(
     regiao = case_when(
       uf %in% c(11:17) ~ "norte",
       uf %in% c(21:29) ~ "nordeste",
@@ -435,7 +469,7 @@ unique(dados_obesidade_trat$dummy_sul)
 unique(dados_obesidade_trat$dummy_centro_oeste)
 
 # Contar número de moradores por Unidade de Consumo - Universo de moradores
-# Usar base nÃ£o trata para considerar todo mundo
+# Usar base não trata para considerar todo mundo do domicílio
 moradores_uc <- dados_obesidade_tratada |>
   filter(num_familia == 1) |>
   count(chave_uc, name = "n_moradores")
@@ -480,6 +514,7 @@ base_resp <- dados_obesidade_trat |>
     idade_meses_resp = idade_meses,
     sexo_resp  = sexo,
     cor_resp   = cor,
+    branco_resp = branco,
     instrucao_resp = instrucao,
     anos_estudo_resp = anos_estudo,
     chave_pessoa_resp = chave_pessoa,
@@ -516,6 +551,7 @@ base_conj <- dados_obesidade_trat |>
     idade_conj = idade,
     sexo_conj  = sexo,
     cor_conj   = cor,
+    branco_conj = branco,
     instrucao_conj = instrucao,
     anos_estudo_conj = anos_estudo,
     chave_pessoa_conj = chave_pessoa,
@@ -538,13 +574,13 @@ quant_crianca1 <- dados_obesidade |>
   filter(num_familia == 1) |>
   filter(grau_parentesco == 3) |>
   filter(idade < 20 & idade > 2) |>
-  filter(idade_meses <= 240 & idade_meses >= 36)
+  filter(idade_meses >= 3 & idade_meses <= 239)
 
 ## O artigo avalia 38.670 crianças
 # 2.3 Base dos filhos
 base_filho <- dados_obesidade_trat |>
-  filter(grau_parentesco %in% c(3), idade >= 2, idade <= 20) |>
-  filter(idade_meses <= 240 & idade_meses >= 36) |>
+  filter(grau_parentesco %in% c(3), idade >= 3, idade <= 19) |>
+  filter(idade_meses >= 36 & idade_meses <= 239) |>
   arrange(chave_uc) |>
   mutate(id_filho_uc = row_number(), .by = chave_uc) |>
   transmute(
@@ -556,6 +592,7 @@ base_filho <- dados_obesidade_trat |>
     idade_meses_filho = as.integer(idade_meses),  
     sexo_filho  = sexo,
     cor_filho   = cor,
+    branco_filho = branco,
     instrucao_filho = instrucao,
     chave_pessoa_filho = chave_pessoa,
     freq_escola_filho = freq_escola,
@@ -574,6 +611,7 @@ uc_info <- dados_obesidade_trat |>
 # Criar base consolidada filho + pais + controles
 # Fazer "inner_join" para se ter pelo menos um par de "filho - responsável"
 # Além de que todo domicílio deve ter um responsável
+# Para as Matrizes
 base_unida_consolidada <- base_filho |>
   inner_join(base_resp, by = "chave_uc")
 
@@ -589,6 +627,13 @@ base_unida_consolidada <- base_unida_consolidada |>
 base_unida_consolidada <- base_unida_consolidada |>
   left_join(uc_info, by = "chave_uc")
 
+colSums(is.na(base_unida_consolidada))
+
+table(base_unida_consolidada$estrutura_fam)
+table(base_unida_consolidada$idade_filho)
+table(base_unida_consolidada$idade_resp)
+table(base_unida_consolidada$idade_conj)
+
 # Criar IMC de Pai e de Mãe
 base_unida_consolidada <- base_unida_consolidada |>
   mutate(
@@ -597,6 +642,7 @@ base_unida_consolidada <- base_unida_consolidada |>
       estrutura_fam == "biparental" & sexo_resp == 1 ~ imc_resp,
       estrutura_fam == "biparental" & sexo_conj == 1 ~ imc_conj,
       estrutura_fam == "mono_homem"                  ~ imc_resp,
+      estrutura_fam == "mono_homem"                  ~ imc_conj,
       TRUE                                           ~ NA_real_
     ),
     # Mãe
@@ -604,9 +650,13 @@ base_unida_consolidada <- base_unida_consolidada |>
       estrutura_fam == "biparental" & sexo_resp == 2 ~ imc_resp,
       estrutura_fam == "biparental" & sexo_conj == 2 ~ imc_conj,
       estrutura_fam == "mono_mulher"                 ~ imc_resp,
+      estrutura_fam == "mono_mulher"                 ~ imc_conj,
       TRUE                                           ~ NA_real_
     )
   )
+
+colSums(is.na(base_unida_consolidada))
+table(base_unida_consolidada$estrutura_fam)
 
 #base_unida_consolidada_out |>
 #  filter(estrutura_fam == "biparental") |>
@@ -616,6 +666,8 @@ table(base_unida_consolidada$estrutura_fam)
 # Puxar o percentil de cada criança conforme o imc, idade e gênero
 imc_index_boy_and_girl <- read_excel("imc_index_table_boys_and_girl.xlsx")
 str(imc_index_boy_and_girl)
+table(imc_index_boy_and_girl$sex_and_age_boy)
+table(imc_index_boy_and_girl$sex_and_age_girl)
 
 # Tratamento da tabela
 ref <- imc_index_boy_and_girl |>
@@ -688,11 +740,15 @@ classifica_imc_adulto <- function(imc) {
   )
 }
 
+colSums(is.na(base_unida_consolidada))
+table(base_unida_consolidada$idade_meses_filho)
+
+# A base "base_unidade_consolidada_out" possui a categorização correta
 base_unida_consolidada_out <- base_unida_consolidada |>
   mutate(
     age_month = as.integer(idade_meses_filho),
-    bmi = as.numeric(imc_filho),
-    in_range = age_month >= 36 & age_month <= 240
+    bmi = as.numeric(imc_filho),                   # bmi = body mass index
+    in_range = age_month >= 36 & age_month <= 239
   ) |>
   left_join(ref_long, by = c("sexo_filho", "age_month")) |>
   mutate(
@@ -723,12 +779,23 @@ base_unida_consolidada_out <- base_unida_consolidada |>
     # categorias dos pais (IMC adulto)
     cat_imc_pai = classifica_imc_adulto(imc_pai),
     cat_imc_mae = classifica_imc_adulto(imc_mae),
+    cat_imc_resp = classifica_imc_adulto(imc_resp),
+    cat_imc_conj = classifica_imc_adulto(imc_conj),
+    
     obeso_pai = as.integer(cat_imc_pai == "obeso"),
-    obeso_mae = as.integer(cat_imc_mae == "obeso")
+    obeso_mae = as.integer(cat_imc_mae == "obeso"),
+    obeso_resp = as.integer(cat_imc_resp == "obeso"),
+    obeso_conj = as.integer(cat_imc_conj == "obeso")
   ) |>
   filter(
     in_range == TRUE,
   )
+
+colSums(is.na(base_unida_consolidada_out))
+sum(is.na(base_unida_consolidada_out$obeso_filho))
+
+# Base para o arquivo "Codigo_Obesidade_04.3 - Regressões.R"
+#write.csv(base_unida_consolidada_out, "Base_2007_obesidade_regressão.csv")
 
 sum(is.na(base_unida_consolidada_out$cat_imc_pai))
 table(base_unida_consolidada_out$in_range)
@@ -738,50 +805,6 @@ table(base_unida_consolidada_out$estrutura_fam)
 summary(base_unida_consolidada_out$imc_filho)
 summary(base_unida_consolidada_out$imc_pai)
 summary(base_unida_consolidada_out$imc_mae)
-
-imc_dens <- base_unida_consolidada_out |>
-  transmute(
-    Filho = imc_filho,
-    Pai   = imc_pai,
-    Mãe   = imc_mae
-  ) |>
-  pivot_longer(everything(), names_to = "grupo", values_to = "imc") |>
-  filter(is.finite(imc)) |>
-  mutate(grupo = factor(grupo, levels = c("Filho", "Pai", "Mãe")))
-
-# limitar eixo para não “amassar” por outliers
-x_max <- quantile(imc_dens$imc, 0.99, na.rm = TRUE)
-x_min <- quantile(imc_dens$imc, 0.01, na.rm = TRUE)
-
-# Estatísticas para linhas de mediana
-medianas <- imc_dens |>
-  group_by(grupo) |>
-  summarise(mediana = median(imc, na.rm = TRUE), .groups = "drop")
-
-ggplot(imc_dens, aes(x = imc, colour = grupo, fill = grupo)) +
-  geom_density(alpha = 0.15, linewidth = 1) +
-  geom_vline(
-    data = medianas,
-    aes(xintercept = mediana, colour = grupo),
-    linetype = "dashed",
-    linewidth = 0.9,
-    show.legend = FALSE
-  ) +
-  coord_cartesian(xlim = c(x_min, x_max)) +
-  labs(
-    title = "Distribuição do IMC",
-    subtitle = "Densidade por grupo comeixo X limitado ao P1–P99",
-    x = "IMC (kg/m²)",
-    y = "Densidade",
-    colour = "Grupo",
-    fill = "Grupo"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    legend.position = "top",
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold")
-  )
 
 # Verificar
 base_unida_consolidada_out_verificar <- base_unida_consolidada_out |>
@@ -909,10 +932,10 @@ resultado <- bind_rows(
 print(resultado, n = Inf)
 
 ### ------------------------------------------------------------------------ ###
-
+#
 # Famílias biparentais e uniparenatais
-
-write.csv(base_unida_consolidada_out, "base_obesidade_geral.csv")
+table(base_unida_consolidada_out$idade_filho)
+write.csv(base_unida_consolidada_out, "base_obesidade_geral_2007.csv")
 
 # Famíliuas biparentais
 base_fam_bi <- base_unida_consolidada_out |>
@@ -920,8 +943,8 @@ base_fam_bi <- base_unida_consolidada_out |>
     estrutura_fam == "biparental"
   )
 table(base_fam_bi$estrutura_fam)
-
-write.csv(base_fam_bi, "base_obesidade_bi.csv")
+table(base_fam_bi$idade_filho)
+write.csv(base_fam_bi, "base_obesidade_bi_2007.csv")
 
 # Famílias uniparentais
 base_fam_uni <- base_unida_consolidada_out |>
@@ -929,9 +952,150 @@ base_fam_uni <- base_unida_consolidada_out |>
     estrutura_fam %in% c("mono_mulher", "mono_homem")
     )
 table(base_fam_uni$estrutura_fam)
-write.csv(base_fam_uni, "base_obesidade_uni.csv")
+table(base_fam_uni$idade_filho)
+write.csv(base_fam_uni, "base_obesidade_uni_2007.csv")
+
+# Análise Gráfica dos Dados com Base de Dados Completa
 
 
+# Gráfico de Densidade
+imc_dens <- base_unida_consolidada_out |>
+  transmute(
+    Filho = imc_filho,
+    Pai   = imc_pai,
+    Mãe   = imc_mae
+  ) |>
+  pivot_longer(everything(), names_to = "grupo", values_to = "imc") |>
+  filter(is.finite(imc)) |>
+  mutate(grupo = factor(grupo, levels = c("Filho", "Pai", "Mãe")))
 
+# limitar eixo para não “amassar” por outliers
+x_max <- quantile(imc_dens$imc, 0.99, na.rm = TRUE)
+x_min <- quantile(imc_dens$imc, 0.01, na.rm = TRUE)
 
+# Estatísticas para linhas de mediana
+medianas <- imc_dens |>
+  group_by(grupo) |>
+  summarise(mediana = median(imc, na.rm = TRUE), .groups = "drop")
 
+ggplot(imc_dens, aes(x = imc, colour = grupo, fill = grupo)) +
+  geom_density(alpha = 0.15, linewidth = 1) +
+  geom_vline(
+    data = medianas,
+    aes(xintercept = mediana, colour = grupo),
+    linetype = "dashed",
+    linewidth = 0.9,
+    show.legend = FALSE
+  ) +
+  coord_cartesian(xlim = c(x_min, x_max)) +
+  labs(
+    title = "Distribuição do IMC da POFF de 2007/2008",
+    subtitle = "Densidade por grupo com eixo X limitado ao P1–P99",
+    x = "IMC (kg/m²)",
+    y = "Densidade",
+    colour = "Grupo",
+    fill = "Grupo"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+base_unida_consolidada_out %>%
+  filter(!is.na(z_bmi), is.finite(z_bmi),
+         z_bmi >= -5, z_bmi <= 5) %>%
+  ggplot(aes(z_bmi)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 70,
+                 fill = "steelblue",
+                 alpha = 0.5,
+                 color = "white") +
+  geom_density(linewidth = 1) +
+  geom_vline(xintercept = c(-2, -1, 0, 1, 2),
+             linetype = "dashed",
+             color = "red",
+             alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Distribuição do Z-score IMC infantil (z_bmi)",
+    subtitle = "Amostra restrita a -5 ≤ z ≤ 5",
+    x = "Z-score IMC (OMS)",
+    y = "Densidade"
+  )
+
+base_unida_consolidada_out |>
+  group_by(idade_filho) |>
+  summarise(
+    prevalencia_obesidade = mean(obeso_filho == 1, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(x = idade_filho, y = prevalencia_obesidade)) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_line(linewidth = 1, alpha = 0.6) +                     # Liga os pontos
+  geom_smooth(method = "loess", se = TRUE, linewidth = 1) + # Captura a tendência geral
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  scale_x_continuous(breaks = seq(min(base_unida_consolidada_out$idade_filho, na.rm=TRUE),
+                                  max(base_unida_consolidada_out$idade_filho, na.rm=TRUE),
+                                  by = 1)) +
+  labs(
+    title = "Prevalência de obesidade infantil por idade em 2007/2008",
+    x = "Idade (anos)",
+    y = "Prevalência de obesidade (%)",
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+base_unida_consolidada_out |>
+  summarise(
+    min_z = min(z_bmi, na.rm = TRUE),
+    p001 = quantile(z_bmi, 0.001, na.rm = TRUE),
+    p01  = quantile(z_bmi, 0.01, na.rm = TRUE),
+    p99  = quantile(z_bmi, 0.99, na.rm = TRUE),
+    p999 = quantile(z_bmi, 0.999, na.rm = TRUE),
+    max_z = max(z_bmi, na.rm = TRUE)
+  )
+
+base_unida_consolidada_out %>%
+  summarise(
+    n = n(),
+    n_z_menor_m5 = sum(z_bmi < -5, na.rm = TRUE),
+    n_z_maior_5  = sum(z_bmi > 5, na.rm = TRUE),
+    pct_menor_m5 = mean(z_bmi < -5, na.rm = TRUE) * 100,
+    pct_maior_5  = mean(z_bmi > 5, na.rm = TRUE) * 100
+  )
+
+verificar <- base_unida_consolidada_out 
+  filter(z_bmi < -10) |>
+  select(
+    chave_uc,
+    idade_filho,
+    idade_meses_filho,
+    sexo_filho,
+    altura_m_filho,
+    massa_filho,
+    imc_filho,
+    bmi,
+    L, M, S,
+    z_bmi
+  ) |>
+  arrange(z_bmi) |>
+  head(30)
+
+base_unida_consolidada_out |>
+  filter(z_bmi < -10) |>
+  select(
+    idade_filho,
+    idade_meses_filho,
+    sexo_filho,
+    altura_m_filho,
+    massa_filho,
+    imc_filho,
+    z_bmi
+  ) %>%
+  arrange(z_bmi) |>
+  print(n = 30)
