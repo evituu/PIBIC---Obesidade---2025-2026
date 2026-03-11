@@ -43,10 +43,11 @@ suppressPackageStartupMessages({
 ###       Regressão MQO e Quantílica: elasticidades intergeracionais        ###
 ## -------------------------------------------------------------------------- ##
 
-base_unida_consolidada_out <- read.csv("Base_2007_obesidade_regressão.csv")
+base_unida_consolidada_out <- read.csv("Base_2008_obesidade_regressão.csv")
 base_unida_consolidada_out <- base_unida_consolidada_out |>
   filter(estrutura_fam == "biparental") 
 
+table(base_unida_consolidada$instrucao_pai)
 colSums(is.na(base_unida_consolidada_out))
 
 table(base_unida_consolidada_out$estrutura_fam)
@@ -75,7 +76,7 @@ amostra_reg <- base_unida_consolidada_out |>
 form <- ln_imc_filho ~ ln_imc_pai + ln_imc_mae +
   idade_filho + I(idade_filho^2) +
   branco_filho + freq_escola_filho +
-  n_moradores + ln_renda_total +
+  n_moradores + ln_renda_total + instrucao_pai + instrucao_mae +
   dummy_norte + dummy_nordeste + dummy_sul + dummy_centro_oeste
 # + dummies de instrucao_resp / instrucao_conj, se quiser
 
@@ -183,7 +184,7 @@ tabela_elasticidades <- bind_rows(
 
 tabela_elasticidades
 
-tabela_organizada <- tabela_elasticidades |>
+tabela_organizada_elasticidades <- tabela_elasticidades |>
   mutate(
     modelo = factor(modelo, levels = c(
       "MQO_total","RQ50_total","RQ90_total","RQ95_total",
@@ -193,13 +194,13 @@ tabela_organizada <- tabela_elasticidades |>
   ) |>
   arrange(grupo, modelo)
 
-tabela_organizada
+tabela_organizada_elasticidades
 
 tabela_formatada <- tabela_elasticidades |>
   mutate(
     beta_pai = round(beta_pai, 3),
     beta_mae = round(beta_mae, 3),
-    modelo = recode(modelo,
+    modelo = dplyr::recode(modelo,
                     "MQO_total" = "MQO",
                     "RQ50_total" = "RQ(50)",
                     "RQ90_total" = "RQ(90)",
@@ -218,14 +219,8 @@ tabela_formatada <- tabela_elasticidades |>
 
 tabela_formatada
 
-summary(base_unida_consolidada$idade_resp)
-summary(base_unida_consolidada$idade_filho)
-summary(base_unida_consolidada$idade_conj)
-count(base_unida_consolidada)
-
 # Salvar todo o resultado:
 resultados <- list(
-  base_unida_consolidada = base_unida_consolidada,
   #Matriz_Transicao = Matriz_Transicao,
   #Mobility_Index = Mobility_Index,
   #Legenda_Microrregiao = Legenda_Microrregiao,
@@ -241,14 +236,15 @@ resultados <- list(
   rq50_meninas = rq50_meninas,
   rq90_meninas = rq90_meninas,
   rq95_meninas = rq95_meninas,
-  tabela_formatada = tabela_formatada
+  tabela_formatada = tabela_formatada,
+  tabela_organizada_elasticidades = tabela_organizada_elasticidades
 )
 
 # Salvar resultados:
-#saveRDS(resultados, "2008_resultados_obesidade_intergeracional_regressao.rds")
+saveRDS(resultados, "2008_resultados_obesidade_intergeracional_regressao.rds")
 
 # Rodar novamente (carregar resultados)
-resultados <- readRDS("resultados_obesidade_intergeracional.rds")
+resultados <- readRDS("2008_resultados_obesidade_intergeracional_regressao.rds")
 
 # Bases
 base_unida_consolidada        <- resultados$base_unida_consolidada
@@ -361,6 +357,19 @@ table(amostra_reg$obeso_filho)
 amostra_com_na <- amostra_reg |>
   filter(is.na(obeso_filho))
 
+amostra_logit <- amostra_reg 
+
+# Transformar em fator
+amostra_logit$cat_imc_mae <- factor(
+  amostra_logit$cat_imc_mae,
+  levels = c("saudavel", "desnutrido", "sobrepeso", "obeso")
+)
+
+amostra_logit$cat_imc_pai <- factor(
+  amostra_logit$cat_imc_pai,
+  levels = c("saudavel", "desnutrido", "sobrepeso", "obeso")
+)
+
 sum(is.na(amostra_reg$obeso_filho))
 sum(is.na(amostra_reg$cat_imc_pai))
 sum(is.na(amostra_reg$cat_imc_mae))
@@ -374,10 +383,6 @@ sum(is.na(amostra_reg$dummy_nordeste))
 sum(is.na(amostra_reg$dummy_sul))
 sum(is.na(amostra_reg$dummy_centro_oeste))
 
-# Base para logit (com variáveis completas)
-
-amostra_logit <- amostra_reg 
-
 table(amostra_logit$cat_imc_pai)
 table(amostra_logit$cat_imc_mae)
 
@@ -385,7 +390,7 @@ table(amostra_logit$cat_imc_mae)
 form_logit <- obeso_filho ~ cat_imc_mae + cat_imc_pai +
   idade_filho + I(idade_filho^2) +
   branco_filho + freq_escola_filho +
-  n_moradores + ln_renda_total +
+  n_moradores + instrucao_pai + instrucao_mae + ln_renda_total +
   dummy_norte + dummy_nordeste + dummy_sul + dummy_centro_oeste
 
 # Modelo Logit
@@ -427,7 +432,7 @@ auc(roc_obj)
 
 auc_val <- as.numeric(auc(roc_obj))
 
-p_roc <- ggroc(roc_obj, legacy.axes = TRUE, linewidth = 1.2) +
+p_roc <- ggroc(roc_obj, legacy.axes = TRUE, linewidth = 1.2, color = "blue") +
   geom_abline(linetype = "dashed", linewidth = 0.8, color = "grey60") +
   coord_equal() +
   labs(
@@ -438,7 +443,7 @@ p_roc <- ggroc(roc_obj, legacy.axes = TRUE, linewidth = 1.2) +
   ) +
   theme_minimal(base_size = 12) +
   theme(
-    plot.title = element_text(face = "bold"),
+    plot.title = element_text(face = "oblique"),
     panel.grid.minor = element_blank(),
   )
 
@@ -477,7 +482,7 @@ y_true <- amostra_logit$obeso_filho
 # matriz de confusão
 tab <- table(Real = y_true, Predito = y_pred); tab
 
-df_cm <- as.data.frame(cm_tab)
+df_cm <- as.data.frame(tab)
 df_cm$perc_total <- df_cm$Freq / sum(df_cm$Freq)
 
 p_cm <- ggplot(df_cm, aes(x = factor(Predito), y = factor(Real), fill = Freq)) +
@@ -562,6 +567,137 @@ tabela_logit <- bind_rows(
 
 tabela_logit
 
+# Probit
+
+## ========================================================================== ##
+###                               Código Probit                              ###
+## ========================================================================== ##
+table(amostra_probit$cat_imc_pai)
+table(amostra_probit$cat_imc_mae)
+
+form_probit <- form_logit
+amostra_probit <- amostra_reg
+
+# Transformar em fator
+amostra_probit$cat_imc_mae <- factor(
+  amostra_probit$cat_imc_mae,
+  levels = c("saudavel", "desnutrido", "sobrepeso", "obeso")
+)
+
+amostra_probit$cat_imc_pai <- factor(
+  amostra_probit$cat_imc_pai,
+  levels = c("saudavel", "desnutrido", "sobrepeso", "obeso")
+)
+
+levels(amostra_probit$cat_imc_mae)
+levels(amostra_probit$cat_imc_pai)
+
+# Rodar modelo probit
+probit_total <- glm(
+  form_probit,
+  family = binomial(link = "probit"),
+  data = amostra_probit
+)
+
+summary(probit_total)
+formula(probit_total)
+
+# Erros robustos
+coeftest(probit_total, vcov. = vcovHC(probit_total, type = "HC1"))
+
+# Ajuste global
+anova(probit_total, test = "Chisq")
+AIC(probit_total); BIC(probit_total); logLik(probit_total)
+pR2(probit_total)
+
+# Efeitos marginais médios
+ame_probit_total <- margins(probit_total) |> summary()
+ame_probit_total
+
+# Predições
+pred_probit <- ggpredict(probit_total, terms = c("cat_imc_mae", "cat_imc_pai"))
+plot(pred_probit)
+
+# Qualidade preditiva
+p_hat_probit <- predict(probit_total, type = "response")
+roc_obj_probit <- roc(amostra_logit$obeso_filho, p_hat_probit)
+auc(roc_obj_probit)
+
+# ROC
+auc_val_probit <- as.numeric(auc(roc_obj_probit))
+
+p_roc_probit <- ggroc(
+  roc_obj_probit,
+  legacy.axes = TRUE,
+  linewidth = 1.2,
+  color = "blue"
+) +
+  geom_abline(linetype = "dashed", linewidth = 0.8, color = "grey60") +
+  coord_equal() +
+  labs(
+    title = "Curva ROC — Modelo Probit",
+    subtitle = sprintf("AUC = %.4f", auc_val_probit),
+    x = "Taxa de Falsos Positivos",
+    y = "Taxa de Verdadeiros Positivos"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+p_roc_probit
+
+# Brier score e Hosmer-Lemeshow
+mean((amostra_logit$obeso_filho - p_hat_probit)^2, na.rm = TRUE)
+hoslem.test(amostra_logit$obeso_filho, p_hat_probit, g = 10)
+
+# Diagnósticos
+detect_separation(form_probit, data = amostra_logit, family = binomial("probit"))
+
+infl_probit <- influence.measures(probit_total)
+summary(infl_probit)
+
+cooks_probit <- cooks.distance(probit_total)
+which(cooks_probit > 4 / length(cooks_probit))
+
+vif(probit_total)
+
+# Matriz de confusão
+cutoff <- 0.5
+y_true <- amostra_logit$obeso_filho
+y_pred_probit <- ifelse(p_hat_probit >= cutoff, 1, 0)
+
+cm_tab_probit <- table(Real = y_true, Predito = y_pred_probit)
+cm_tab_probit
+
+df_cm_probit <- as.data.frame(cm_tab_probit)
+df_cm_probit$perc_total <- df_cm_probit$Freq / sum(df_cm_probit$Freq)
+
+p_cm_probit <- ggplot(df_cm_probit, aes(x = factor(Predito), y = factor(Real), fill = Freq)) +
+  geom_tile(color = "grey85", linewidth = 0.7) +
+  geom_text(
+    aes(label = sprintf("%d\n(%.1f%%)", Freq, 100 * perc_total)),
+    fontface = "bold",
+    size = 4
+  ) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  labs(
+    title = "Matriz de Confusão — Modelo Probit",
+    subtitle = sprintf("Cutoff = %.2f", cutoff),
+    x = "Predito",
+    y = "Real",
+    fill = "Contagem"
+  ) +
+  coord_equal() +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.title = element_text(face = "bold")
+  )
+
+p_cm_probit
 
 
 

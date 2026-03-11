@@ -130,6 +130,250 @@ table(dados_obesidade_uni_pai_filha$sexo_filho)
 ######
 
 ###
+####                  GERAL - Responsável -> filho(a)
+###
+table(dados_obesidade_bi$cat_imc_resp)
+table(dados_obesidade_bi$cat_imc_filho)
+table(dados_obesidade_bi$sexo_filho)
+
+# Verificar filho e filha juntos
+dados_obesidade_bi_formatada <- dados_obesidade_bi |>
+  mutate(sexo_filho = ifelse(sexo_filho == 2, 1, sexo_filho))
+
+#table(dados_obesidade_bi_formatada$sexo_filho)
+
+{
+  # Filtrar faixa etária e observações válidas
+  #dados_obesidade_uni_matriz <- dados_obesidade_bi |>
+  dados_obesidade_uni_matriz <- dados_obesidade_bi_formatada |>  
+    filter(
+      !is.na(cat_imc_resp),
+      !is.na(estrutura_fam),
+      !is.na(sexo_filho),
+      !is.na(cod_upa_resp),
+      !is.na(estrato_pof_resp),
+      !is.na(peso_final_filho)
+    ) |>
+    # pelo menos pai com categoria de IMC e filho com categoria de IMC
+    filter(
+      !is.na(cat_imc_resp)
+    ) |>
+    # garantir a mesma ordem de estados (desnutrido -> saudável -> sobrepeso -> obeso)
+    mutate(
+      cat_imc_filho = factor(
+        cat_imc_filho,
+        levels = c("desnutrido", "saudavel", "sobrepeso", "obeso")
+      ),
+      cat_imc_resp = factor(
+        cat_imc_resp,
+        levels = c("desnutrido", "saudavel", "sobrepeso", "obeso")
+      ),
+      # codificação numérica para o Índice beta
+      imc_resp_num = as.numeric(cat_imc_resp) - 1,
+      imc_filho_num = as.numeric(cat_imc_filho) - 1,
+      # "controle" = combinação de estrutura familiar e sexo do filho
+      grupo    = interaction(sexo_filho, drop = TRUE),
+      controle = dense_rank(grupo)
+    )
+  
+  table(dados_obesidade_uni_matriz$estrutura_fam)
+  colSums(is.na(dados_obesidade_uni_matriz))
+  
+  {
+    Matriz_Transicao <- tibble(
+      Controle        = integer(),
+      origem_imc      = character(),
+      IMC_desnutrido  = double(),
+      IMC_saudavel    = double(),
+      IMC_sobrepeso   = double(),
+      IMC_obeso       = double()
+    )
+    
+    Mobility_Index <- NULL
+    estados_imc <- c("desnutrido", "saudavel", "sobrepeso", "obeso")
+    
+    for (g in sort(unique(dados_obesidade_uni_matriz$controle))) {
+      
+      dados <- dados_obesidade_uni_matriz |>
+        filter(controle == g)
+      
+      if (nrow(dados) < 2) next
+      
+      design <- tryCatch(
+        svydesign(
+          id      = ~cod_upa_resp,
+          strata  = ~estrato_pof_resp,
+          weights = ~peso_final_filho,
+          data    = dados,
+          nest    = TRUE
+        ),
+        error = function(e) {
+          message("Pulando grupo ", g, " (erro no svydesign): ", e$message)
+          return(NULL)
+        }
+      )
+      if (is.null(design)) next
+      
+      observacao <- nrow(dados)
+      populacao_estimada <- tryCatch(
+        round(sum(weights(design)), 0),
+        error = function(e) {
+          message("Não consegui calcular svytotal para grupo ", g, ": ", e$message)
+          return(NA_real_)
+        }
+      )
+      
+      # ---------- Matriz de transição PAI -> FILHO ---------- #
+      tab_IMC <- tryCatch(
+        svytable(~cat_imc_resp + cat_imc_filho, design),  # AQUI troca
+        error = function(e) {
+          message("Pulando grupo ", g, " (erro no svytable): ", e$message)
+          return(NULL)
+        }
+      )
+      if (is.null(tab_IMC)) next
+      
+      MTransicao <- data.frame(
+        prop.table(tab_IMC, margin = 1)
+      ) |>
+        complete(
+          cat_imc_resp   = estados_imc,
+          cat_imc_filho = estados_imc,
+          fill = list(Freq = 0)
+        ) |>
+        arrange(cat_imc_resp) |>
+        pivot_wider(
+          names_from  = cat_imc_filho,
+          values_from = Freq
+        ) |>
+        select(-cat_imc_resp) |>
+        as.matrix()
+      
+      rownames(MTransicao) <- estados_imc
+      
+      # ------- Índices (Mt, Ml, Md, Mda, Ib, IMA, IMD, IP, P00â€“P33) ------- #
+      eigenvalues <- eigen(MTransicao)$values
+      
+      Mt  <- (nrow(MTransicao) - sum(diag(MTransicao))) / (nrow(MTransicao) - 1)
+      Ml  <- 1 - abs(eigenvalues[2])
+      Md  <- 1 - abs(det(MTransicao))
+      Mda <- 1 - abs(det(MTransicao))^(1 / (nrow(MTransicao) - 1))
+      
+      Ib <- 0
+      for (i in 1:nrow(MTransicao)) {
+        for (j in 1:nrow(MTransicao)) {
+          Ib <- Ib + (MTransicao[i, j] * abs(i - j))
+        }
+      }
+      Ib <- Ib / (nrow(MTransicao) * (nrow(MTransicao) - 1))
+      
+      IMA <- 0
+      for (i in 1:(nrow(MTransicao) - 1)) {
+        for (j in (i + 1):nrow(MTransicao)) {
+          IMA <- IMA + MTransicao[i, j]
+        }
+      }
+      IMD <- 0
+      for (i in 2:nrow(MTransicao)) {
+        for (j in 1:(i - 1)) {
+          IMD <- IMD + MTransicao[i, j]
+        }
+      }
+      IP <- sum(diag(MTransicao))
+      
+      soma <- IMA + IMD + IP
+      IMA <- IMA / soma
+      IMD <- IMD / soma
+      IP  <- IP  / soma
+      
+      P00 <- MTransicao[1, 1]
+      P11 <- MTransicao[2, 2]
+      P22 <- MTransicao[3, 3]
+      P33 <- MTransicao[4, 4]
+      
+      # ---------- Índice beta (regressão) ---------- #
+      regre <- tryCatch(
+        svyglm(imc_filho_num ~ imc_resp_num, design = design),
+        error = function(e) {
+          message("Erro em svyglm no grupo ", g, ": ", e$message)
+          return(NULL)
+        }
+      )
+      
+      if (is.null(regre) || is.na(coef(regre)[2])) {
+        beta <- NA_real_
+        beta_compl <- NA_real_
+      } else {
+        beta <- coef(regre)[2]
+        beta_compl <- 1 - beta
+      }
+      
+      Mobility_Index_coluna <- tibble(
+        Indicador = c(
+          "Observacoes",
+          "Populacao Estimada",
+          "Indice de Prais",
+          "Indice do 2o Autovalor",
+          "Indice do Determinante",
+          "Indice do Determinante Alternativo",
+          "Indice de Bartholomew",
+          "Indice de Mobilidade Ascendente",
+          "Indice de Mobilidade Descendente",
+          "Indice de Persistencia",
+          "Persistencia em desnutrido",
+          "Persistencia em saudavel",
+          "Persistencia em sobrepeso",
+          "Persistencia em obeso",
+          "Indice Beta (Parametrico)",
+          "Indice 1-Beta (Parametrico)"
+        ),
+        !!paste0("grupo_", g) := c(
+          observacao,
+          populacao_estimada,
+          Mt, Ml, Md, Mda,
+          Ib,
+          IMA, IMD, IP,
+          P00, P11, P22, P33,
+          beta, beta_compl
+        )
+      )
+      
+      Matriz_linha <- as_tibble(MTransicao, .name_repair = "minimal") |>
+        mutate(
+          Controle   = g,
+          origem_imc = estados_imc
+        ) |>
+        relocate(Controle, origem_imc) |>
+        rename(
+          IMC_desnutrido = desnutrido,
+          IMC_saudavel   = saudavel,
+          IMC_sobrepeso  = sobrepeso,
+          IMC_obeso      = obeso
+        )
+      
+      Matriz_Transicao <- bind_rows(Matriz_Transicao, Matriz_linha)
+      
+      if (is.null(Mobility_Index)) {
+        Mobility_Index <- Mobility_Index_coluna
+      } else {
+        Mobility_Index <- full_join(Mobility_Index, Mobility_Index_coluna, by = "Indicador")
+      }
+    }
+  }
+  
+  Matriz_Transicao_bi_total <- Matriz_Transicao; Matriz_Transicao_bi_total
+  Mobility_Index_bi_total <- Mobility_Index; Mobility_Index_bi_total
+  Matriz_Transicao_bi_total
+  Mobility_Index_bi_total
+}
+
+Matriz_Transicao_bi_total[] <- lapply(
+  Matriz_Transicao_bi_total,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
+
+
+###
 ####                    Pai -> Filho
 ###
 
@@ -356,7 +600,16 @@ table(dados_obesidade_geral_pai_filho$idade_filho)
   Matriz_Transicao_bi_pai_filho
   Mobility_Index_bi_pai_filho
   
+  round(Matriz_Transicao_bi_pai_filho, 4)
+  round(Mobility_Index_bi_pai_filho, 4)
+  
 }
+Matriz_Transicao_bi_pai_filho1 <- round(Matriz_Transicao_bi_pai_filho, 6)
+
+Matriz_Transicao_bi_pai_filho[] <- lapply(
+  Matriz_Transicao_bi_pai_filho,
+  function(x) if(is.numeric(x)) round(x*100, 6) else x
+)
 
 ###
 ####                    Pai -> Filha
@@ -364,7 +617,6 @@ table(dados_obesidade_geral_pai_filho$idade_filho)
 table(dados_obesidade_geral_pai_filha$cat_imc_filha)
 table(dados_obesidade_geral_pai_filha$idade_filho)
 table(dados_obesidade_geral_pai_filha$estrutura_fam)
-
 
 {
   # 1) Filtrar faixa etária e observações válidas - PAI -> FILHA
@@ -584,6 +836,11 @@ table(dados_obesidade_geral_pai_filha$estrutura_fam)
   Matriz_Transicao_bi_pai_filha <- Matriz_Transicao; Matriz_Transicao_bi_pai_filha
   Mobility_Index_bi_pai_filha <- Mobility_Index; Mobility_Index_bi_pai_filha
 }
+
+Matriz_Transicao_bi_pai_filha[] <- lapply(
+  Matriz_Transicao_bi_pai_filha,
+  function(x) if(is.numeric(x)) round(x*100, 6) else x
+)
 
 ###
 ####                    Mãe -> Filho
@@ -813,6 +1070,11 @@ table(dados_obesidade_geral_mae_filho$idade_filho)
   Mobility_Index_bi_mae_filho <- Mobility_Index; Mobility_Index_bi_mae_filho
 }
 
+Matriz_Transicao_bi_mae_filho[] <- lapply(
+  Matriz_Transicao_bi_mae_filho,
+  function(x) if(is.numeric(x)) round(x*100, 6) else x
+)
+
 ###
 ####                    Mãe -> Filha
 ###
@@ -1036,6 +1298,12 @@ table(dados_obesidade_geral_mae_filha$sexo_filho)
   Matriz_Transicao_bi_mae_filha <- Matriz_Transicao; Matriz_Transicao_bi_mae_filha
   Mobility_Index_bi_mae_filha <- Mobility_Index; Mobility_Index_bi_mae_filha
 }
+Matriz_Transicao_bi_mae_filha
+
+Matriz_Transicao_bi_mae_filha[] <- lapply(
+  Matriz_Transicao_bi_mae_filha,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
 
 ######
 ##########     Matriz de Transição para as Famílias Uniparentais ✅
@@ -1043,10 +1311,14 @@ table(dados_obesidade_geral_mae_filha$sexo_filho)
 table(dados_obesidade_uni$sexo_filho)
 table(dados_obesidade_uni$estrutura_fam)
 
+#dados_obesidade_uni_formatada <- dados_obesidade_uni %>%
+#  mutate(sexo_filho = ifelse(sexo_filho == 2, 1, sexo_filho))
+
+#table(dados_obesidade_uni_formatada$sexo_filho)
+
 {
   # Filtrar faixa etária e observações válidas
   dados_obesidade_uni_matriz <- dados_obesidade_uni |>
-    # faixa etária usada no artigo (ajuste se quiser)
     filter(
       !is.na(cat_imc_resp),
       !is.na(estrutura_fam),
@@ -1267,6 +1539,11 @@ table(dados_obesidade_uni$estrutura_fam)
   Matriz_Transicao_mono_total
   Mobility_Index_mono_total
 }
+
+Matriz_Transicao_mono_total[] <- lapply(
+  Matriz_Transicao_mono_total,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
 
 ###
 ####                        Matriz de Transição Mono pai -> filho
@@ -1500,6 +1777,11 @@ table(dados_obesidade_uni_pai_filho$cat_imc_filho)
   Matriz_Transicao_mono_pai_filho
   Mobility_Index_mono_pai_filho
 }
+
+Matriz_Transicao_mono_pai_filho[] <- lapply(
+  Matriz_Transicao_mono_pai_filho,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
 
 ###
 ####                        Matriz de Transição Mono pai -> filha
@@ -1735,6 +2017,11 @@ table(dados_obesidade_uni_pai_filha$estrutura_fam)
   Mobility_Index_mono_pai_filha
 }
 
+Matriz_Transicao_mono_pai_filha[] <- lapply(
+  Matriz_Transicao_mono_pai_filha,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
+
 ###
 ####                        Matriz de Transição Mono Mãe -> filho ✅
 ###
@@ -1968,6 +2255,11 @@ table(dados_obesidade_uni_mae_filho$estrutura_fam)# Realmente monoparental
   Mobility_Index_mono_mae_filho
 }
 
+Matriz_Transicao_mono_mae_filho[] <- lapply(
+  Matriz_Transicao_mono_mae_filho,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
+
 ###
 ####                        Matriz de Transição Mono Mãe -> filha ✅
 ###
@@ -2199,6 +2491,11 @@ table(dados_obesidade_uni_mae_filha$estrutura_fam)# Realmente monoparental
   Matriz_Transicao_mono_mae_filha
   Mobility_Index_mono_mae_filha
 }
+
+Matriz_Transicao_mono_mae_filha[] <- lapply(
+  Matriz_Transicao_mono_mae_filha,
+  function(x) if(is.numeric(x)) round(x*100, 2) else x
+)
 
 ###### ================================================================== ######
 ######                       RESUMO DOS RESULTADOS                        ######

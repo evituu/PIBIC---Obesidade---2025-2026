@@ -14,16 +14,18 @@ setwd("C:/Users/vitor/OneDrive/Área de Trabalho/UFPB/PIBIC_2025/Base de Dados/P
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
+  library(tidyr)
   library(stringr)
   library(ggplot2)
   library(readxl)
-  library(quantreg)
+  library(quantreg) # Cálculo das regressões quantílicas
   library(tibble)
   library(tidyr)
-  library(haven)
-  library(anthro)
-  library(childsds)
-  library(survey)
+  library(haven)    # Leitura de .dta
+  library(anthro)   # Ferramentas para cálculos antropométricos
+  library(childsds) # Cálculo de standard deviation scores
+  library(survey)   # Biblioteca para desenho amostral
+  library(scales)   # Controlar escalas dos gráficos
 })
 
 morador <- "T_MORADOR_S.txt"

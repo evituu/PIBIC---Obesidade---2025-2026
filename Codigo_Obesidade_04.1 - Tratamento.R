@@ -2,7 +2,7 @@
 ###                  CÓDIGO OBESIDADE INTERGERACIONAL                        ###
 #------------------------------------------------------------------------------#
 # Aluno: Victor Eduardo
-# Doscente: Adriano Firmino V. Araaújo
+# Doscente: Adriano Firmino V. Araújo
 ##
 # ---------------------------------------------------------------------------
 # EXTRAÇÃO POR readr::read_fwf + fwf_cols (POF 2017-2018 | MORADOR.txt)
@@ -18,14 +18,14 @@ suppressPackageStartupMessages({
   library(stringr)
   library(ggplot2)
   library(readxl)
-  library(quantreg)
+  library(quantreg) # Cálculo das regressões quantílicas
   library(tibble)
   library(tidyr)
-  library(haven)
-  library(anthro)
-  library(childsds)
-  library(survey)
-  library(scales)
+  library(haven)    # Leitura de .dta
+  library(anthro)   # Ferramentas para cálculos antropométricos
+  library(childsds) # Cálculo de standard deviation scores
+  library(survey)   # Biblioteca para desenho amostral
+  library(scales)   # Controlar escalas dos gráficos
 })
 
 morador <- "T_MORADOR_S.txt"
@@ -100,6 +100,22 @@ dados_obesidade <- read_fwf(
 # col_character - string
 # col_factor - fator
 # col_guess - o readr infere o tipo
+
+# Função para Estatística Descritiva
+estat_descritiva <- function(x) {
+  
+  res <- c(
+    minimo = min(x, na.rm = TRUE),
+    media = mean(x, na.rm = TRUE),
+    mediana = median(x, na.rm = TRUE),
+    maximo = max(x, na.rm = TRUE),
+    amplitude = max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+    variancia = var(x, na.rm = TRUE),
+    desvio_padrao = sd(x, na.rm = TRUE)
+  )
+  
+  round(res, 4)
+}
 
 ###
 ### ------------------------ ESCALA (decimais implícitos) ----------------------
@@ -228,7 +244,48 @@ quant_crianca1 <- dados_obesidade |>
   filter(num_familia == 1) |>
   filter(grau_parentesco == 3) |>
   filter(idade > 2 & idade < 20) |>
-  filter(idade_meses >= 36 & idade_meses < 240)
+  filter(idade_meses >= 36 & idade_meses <= 239)
+
+estrutura_familia_teste <- dados_obesidade |>
+  filter(grau_parentesco %in% c(1, 2), idade >= 18, sexo %in% c(1, 2)) |>
+  summarise(
+    n_pais = sum(sexo == 1, na.rm = TRUE),
+    n_maes = sum(sexo == 2, na.rm = TRUE),
+    .by = chave_uc
+  ) |>
+  mutate(
+    estrutura_fam = case_when(
+      n_pais == 1 & n_maes == 1 ~ "biparental",
+      n_pais == 1 & n_maes == 0 ~ "mono_homem",
+      n_pais == 0 & n_maes == 1 ~ "mono_mulher",
+      TRUE ~ NA_character_
+    )
+  )
+
+ucs_homo_teste <- estrutura_familia_teste |> 
+  filter(n_pais >= 2 & n_maes == 0 |  
+           n_maes >= 2 & n_pais == 0) |> 
+  pull(chave_uc)
+
+quant_crianca2 <- dados_obesidade |>
+  filter(num_uc == 1) |>
+  filter(num_familia == 1) |>
+  filter(grau_parentesco == 3) |>
+  filter(idade >= 3 & idade <= 20) |>
+  filter(idade_meses >= 36 & idade_meses <= 240) |>
+  filter(cor != 9) |>         # A partir daqui:
+  filter(renda_total > 0) |>
+  #filter(massa != 0) |>
+  #filter(altura != 0) |>
+  #distinct() |>
+  filter(!chave_uc %in% ucs_homo_teste)
+
+#dado <- dados_obesidade_trat |>
+#  filter(chave_pessoa == "27000410002711360710103"); dado
+
+#base_anti_join <- quant_crianca2 |>
+#  anti_join(base_filho, by = c("chave_pessoa" = "chave_pessoa_filho"))
+#head(base_anti_join)
 
 table(quant_crianca1$idade_meses)
 
@@ -344,12 +401,18 @@ colSums(is.na(dados_obesidade_tratada))
 ### ----------------------- TRATAMENTO DOS DADOS --------------------------- ###
 #------------------------------------------------------------------------------#
 
+dado <- dados_obesidade_tratada |>
+  filter(chave_pessoa == "27000410002711360710103"); dado
+
 # Manter os graus de parentescos relevantes para pesquisa
 sort(unique(dados_obesidade_tratada$grau_parentesco))
 table(dados_obesidade_tratada$grau_parentesco)
 
 dados_obesidade_trat <- dados_obesidade_tratada |>
   filter(grau_parentesco %in% c(1,2,3))
+
+dado <- dados_obesidade_trat |>
+  filter(chave_pessoa == "27000410002711360710103"); dado
 
 sort(unique(dados_obesidade_trat$grau_parentesco)) # Verificar
 table(dados_obesidade_trat$grau_parentesco)        # Verificar
@@ -386,6 +449,9 @@ domicilios_mult_resp <- dados_obesidade_trat |>
   filter(grau_parentesco == 1) |>         
   count(chave_uc, name = "n_responsaveis") |>   # contar por família
   filter(n_responsaveis > 1)                    # mantêm famílias com > 1 responsável
+
+dado <- dados_obesidade_trat |>
+  filter(chave_pessoa == "27000410002711360710103"); dado
 
 # Ver quantas famílias estão nessa situação
 nrow(domicilios_mult_resp)
@@ -425,8 +491,6 @@ fam_flags <- dados_obesidade_trat |>
   )
 
 table(fam_flags$estrutura_fam)
-
-table(fam_flags$estrutura_fam)
 table(fam_flags$n_pais)
 table(fam_flags$n_maes)
 
@@ -436,8 +500,14 @@ ucs_homo <- fam_flags |>
            n_maes >= 2 & n_pais == 0) |> 
   pull(chave_uc)
 
+#dado <- dados_obesidade_trat |>
+#  filter(chave_pessoa == "27000410002711360710103"); dado
+
 dados_obesidade_trat <- dados_obesidade_trat |>
   filter(!chave_uc %in% ucs_homo)
+
+#dado <- dados_obesidade_trat |>
+#  filter(chave_pessoa == "27000410002711360710103"); dado
 
 # Criar variável de região e criação da dummy regional
 dados_obesidade_trat <- dados_obesidade_trat |>
@@ -494,6 +564,19 @@ freq_escola_verificacao <- dados_obesidade_trat |>
 # Verificar dados de frequência escolar
 unique(dados_obesidade_trat$freq_escola)
 table(dados_obesidade_trat$freq_escola)
+
+# Idade ajustada para que os filhos que estejam perto de completar 20 anos sejam considerados
+dados_obesidade_trat <- dados_obesidade_trat |>
+  mutate(
+    idade = case_when(
+      grau_parentesco == 3 & idade_meses >= 234 & idade_meses <= 239 ~ 20L,
+      TRUE ~ idade
+    )
+  )
+
+dados_obesidade_trat |>
+  filter(grau_parentesco == 3 & idade_meses >= 234 & idade_meses <= 239) |>
+  select(grau_parentesco, idade_meses, idade)
 
 ####
 #### CRIAR BASE DE DADOS
@@ -569,18 +652,16 @@ base_conj <- dados_obesidade_trat |>
   )
 nrow(base_conj); head(base_conj)
 
-
 quant_crianca1 <- dados_obesidade |>
   filter(num_familia == 1) |>
   filter(grau_parentesco == 3) |>
   filter(idade < 20 & idade > 2) |>
   filter(idade_meses >= 3 & idade_meses <= 239)
 
-## O artigo avalia 38.670 crianças
 # 2.3 Base dos filhos
 base_filho <- dados_obesidade_trat |>
-  filter(grau_parentesco %in% c(3), idade >= 3, idade <= 19) |>
-  filter(idade_meses >= 36 & idade_meses <= 239) |>
+  #filter(grau_parentesco %in% c(3), idade >= 2, idade <= 20) |>
+  filter(grau_parentesco %in% c(3), idade_meses >= 24 & idade_meses <= 239) |>
   arrange(chave_uc) |>
   mutate(id_filho_uc = row_number(), .by = chave_uc) |>
   transmute(
@@ -603,6 +684,9 @@ base_filho <- dados_obesidade_trat |>
     massa_filho = massa,
     imc_filho = imc
   )
+
+table(base_filho$idade_filho)
+max(base_filho$idade_meses_filho)
 
 uc_info <- dados_obesidade_trat |>
   distinct(chave_uc, regiao, uf, dummy_norte, dummy_nordeste, dummy_sul, dummy_centro_oeste,
@@ -628,6 +712,21 @@ base_unida_consolidada <- base_unida_consolidada |>
   left_join(uc_info, by = "chave_uc")
 
 colSums(is.na(base_unida_consolidada))
+
+sum(base_filho$sexo_filho == 1)
+sum(base_filho$sexo_filho == 2)
+any(duplicated(base_filho$chave_pessoa_filho))
+any(duplicated(base_unida_consolidada$chave_pessoa_filho))
+
+n_filhos <- base_filho |>
+  dplyr::filter(sexo_filho == 1) |>
+  dplyr::distinct(chave_pessoa_filho) |>
+  dplyr::pull(chave_pessoa_filho)
+
+n_filhas <- base_filho |>
+  dplyr::filter(sexo_filho == 2) |>
+  dplyr::distinct(chave_pessoa_filho) |>
+  dplyr::pull(chave_pessoa_filho)
 
 table(base_unida_consolidada$estrutura_fam)
 table(base_unida_consolidada$idade_filho)
@@ -742,13 +841,14 @@ classifica_imc_adulto <- function(imc) {
 
 colSums(is.na(base_unida_consolidada))
 table(base_unida_consolidada$idade_meses_filho)
+table(base_unida_consolidada$idade_filho)
 
 # A base "base_unidade_consolidada_out" possui a categorização correta
 base_unida_consolidada_out <- base_unida_consolidada |>
   mutate(
     age_month = as.integer(idade_meses_filho),
     bmi = as.numeric(imc_filho),                   # bmi = body mass index
-    in_range = age_month >= 36 & age_month <= 239
+    in_range = age_month >= 24 & age_month <= 239
   ) |>
   left_join(ref_long, by = c("sexo_filho", "age_month")) |>
   mutate(
@@ -830,6 +930,15 @@ base_unida_consolidada_out_verificar <- base_unida_consolidada_out |>
   filter(
     in_range == TRUE
   ); base_unida_consolidada_out_verificar
+
+### Estatística descritiva ###
+
+vars_filho <- c("idade_filho", "sexo_filho", "cor_filho", "instrucao_filho",
+          "freq_escola_filho", "sabe_ler_escrever_filho", "imc_filho",
+          "obeso_filho")
+
+lapply(base_unida_consolidada_out[vars_filho], estat_descritiva)
+
 
 # Estatísticas da base tratada
 
@@ -989,7 +1098,7 @@ ggplot(imc_dens, aes(x = imc, colour = grupo, fill = grupo)) +
   ) +
   coord_cartesian(xlim = c(x_min, x_max)) +
   labs(
-    title = "Distribuição do IMC da POFF de 2007/2008",
+    title = "Distribuição do IMC da POFF de 2007 a 2008",
     subtitle = "Densidade por grupo com eixo X limitado ao P1–P99",
     x = "IMC (kg/m²)",
     y = "Densidade",
@@ -1069,7 +1178,7 @@ base_unida_consolidada_out %>%
     pct_maior_5  = mean(z_bmi > 5, na.rm = TRUE) * 100
   )
 
-verificar <- base_unida_consolidada_out 
+verificar <- base_unida_consolidada_out |>
   filter(z_bmi < -10) |>
   select(
     chave_uc,
@@ -1099,3 +1208,4 @@ base_unida_consolidada_out |>
   ) %>%
   arrange(z_bmi) |>
   print(n = 30)
+
